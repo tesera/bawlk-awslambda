@@ -8,7 +8,7 @@ var AdmZip = require('adm-zip');
 var Q = require('q');
 var bawlk = require('bawlk');
 
-function validate(csv, schema) {
+function validate(name, csv, schema) {
     var deferred = Q.defer();
     var rules = bawlk.getRulesetsFromSchema(schema);
     var awk = spawn('awk', ['-F', ',', '-f', './node_modules/bawlk/bin/bawlk.awk']);
@@ -25,10 +25,10 @@ function validate(csv, schema) {
     });
 
     awk.stdout.on('end', function () {
-        var validator = spawn('awk', ['-F', ',', '-v', 'action=validate', validator]);
+        var bawlk = spawn('awk', ['-F', ',', '-v', 'FILENAME='+name , '-v', 'action=validate', validator]);
 
-        csvStream.pipe(validator.stdin);
-        validator.stdout.pipe(process.stdout)
+        csvStream.pipe(bawlk.stdin);
+        bawlk.stdout.pipe(process.stdout);
     });
 }
 
@@ -46,7 +46,7 @@ exports.handler = function(event, context) {
             var schema = r.schema;
             var csv = zip.getEntry(r.path).getData().toString('utf8');
 
-            return validate(csv, schema); 
+            return validate(r.path, csv, schema); 
         });
     });
 };
