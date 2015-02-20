@@ -1,7 +1,7 @@
 var lambda = require('./index.js');
 
 var evt = {
-    Records:[ 
+    Records:[
         {
             s3: {
                 bucket: {
@@ -13,6 +13,6 @@ var evt = {
             }
         }
     ]
-}
+};
 
 lambda.handler(evt);
