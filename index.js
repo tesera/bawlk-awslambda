@@ -93,8 +93,11 @@ exports.handler = function(event, context) {
                         memo+=result.value;
                         return memo;
                     }, '');
-                    params.Body = JSON.stringify(violations);
+
+                    params.Body = violations;
                     params.Key = params.Key.replace('datapackage.zip', 'violations.csv');
+                    params.ContentEncoding = 'utf-8';
+                    params.ContentType = 'text/csv';
 
                     s3.putObject(params, function (err, data) {
                         if (err) {
