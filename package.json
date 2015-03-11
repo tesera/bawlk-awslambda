@@ -1,6 +1,6 @@
 {
   "name": "bawlk-awslambda",
-  "version": "1.0.0",
+  "version": "0.0.2",
   "description": "AWS Lambda function for proccessing datapackages uploaded to s3 using bawlk.",
   "main": "index.js",
   "scripts": {
@@ -9,10 +9,10 @@
   "author": "Yves Richard",
   "license": "MIT",
   "dependencies": {
-    "aws-sdk": "~2.1.12",
-    "lodash": "~3.2.0",
     "adm-zip": "~0.4.7",
-    "q": "~1.1.2",
-    "bawlk": "git://github.com/tesera/bawlk"
+    "aws-sdk": "~2.1.12",
+    "bawlk": "git://github.com/tesera/bawlk",
+    "event-stream": "^3.3.0",
+    "stream-reduce": "^1.0.3"
   }
 }
