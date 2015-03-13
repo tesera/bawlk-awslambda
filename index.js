@@ -43,6 +43,10 @@ exports.handler = function(event, context) {
 
                         awk.stdout.setEncoding('utf8');
 
+                        awk.stdin.on('error', function () {
+                            self.emit('end');
+                        });
+
                         awk.stdout.on('data', function (data) {
                             self.emit('data', data);
                         });
