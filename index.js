@@ -1,90 +1,127 @@
-'use strict';
-var stream = require('stream');
-var spawn = require('child_process').spawn;
+var sys = require('sys');
+var fs = require('fs');
 var aws = require('aws-sdk');
-var s3 = new aws.S3();
-var AdmZip = require('adm-zip');
-var bawlk = require('bawlk');
-var es = require('event-stream');
-var Readable = require('stream').Readable;
-var reduce = require("stream-reduce");
+var _ = require('lodash');
+var Q = require('q');
+var request = require('request');
 
-exports.handler = function(event, context) {
-    var params = {
-        Bucket: event.Records[0].s3.bucket.name,
-        Key: event.Records[0].s3.object.key
+var Upload = require('./lib/upload');
+var Logger = require('./lib/logger');
+
+exports.handler = function(event, context, debug) {
+    // exit if event not from a datapackage.zip put or copy
+    if (!/datapackage.zip$/.test(event.Records[0].s3.object.key)) return context(null);
+
+    var env = {
+        awsDefaultRegion: "us-east-1",
+        rdsSecurityGroup: "default",
+        pgUrl: "postgres://localhost/afgo_dev"
+    };
+    var source = {
+        bucket: event.Records[0].s3.bucket.name,
+        key: decodeURIComponent(event.Records[0].s3.object.key)
     };
 
-    if (event.Records[0].eventName == 'ObjectCreated:Put' && event.Records[0].s3.object.key.indexOf('datapackage.zip') != -1) {
-        s3.getObject(params, function (err, res) {
-            var zip = new AdmZip(res.Body);
-            var datapackage = JSON.parse(zip.getEntry('datapackage.json').getData().toString('utf8'));
+    var slugs = source.key.split('/');
+    var uploadPath = slugs.slice(0, -1).join('/');
+    var outcome = 'success';
+    var loggerOptions = {
+        bucket: source.bucket,
+        key: uploadPath + '/logs.json',
+        debug: debug || false
+    };
+    var logger = new Logger(loggerOptions);
 
-            var streams = datapackage.resources.map(function (resource) {
-                var resourceStream = new Readable({ objectMode: true });
-                resourceStream.push(resource);
-                resourceStream.push(null);
+    function loadEnv() {
+        var envFile = 'env.json';
+        var read = Q.denodeify(fs.readFile);
 
-                var csv = zip.getEntry(resource.path).getData().toString('utf8');
-                var csvStream = new stream.Readable();
-                csvStream.push(csv);
-                csvStream.push(null);
+        return read(envFile).then(function (data) {
+            env = JSON.parse(data.toString('utf8'));
+            return logger.log('loaded env file');
+        }, function () {
+            return logger.log('no env file; using defauls');
+        });
+    }
 
-                return resourceStream
-                    .pipe(bawlk.getRuleset())
-                    .pipe(bawlk.getScript())
-                    .pipe(reduce(function (acc, chunk) {
-                        return acc + chunk;
-                    }, ''))
-                    .pipe(es.through(function (script) {
-                        var self = this;
-                        var args = ['-v', 'FILENAME='+resource.path, script.toString('utf8')];
-                        var awk = spawn('awk', args);
+    loadEnv()
+        .then(function () {
+            var uploadOptions = {
+                bucket: source.bucket,
+                key: source.key,
+                logger: logger,
+                pgUrl: env.pgUrl
+            };
+            var upload = new Upload(uploadOptions);
+            logger.log('triggered by put with: ' + source.key);
 
-                        awk.stdout.setEncoding('utf8');
+            upload.on('ready', function() {
+                logger.log('upload ready and calling: ' + upload.action);
+                var actionHandler = actionHandlers[upload.action];
 
-                        awk.stdin.on('error', function () {
-                            self.emit('end');
-                        });
+                actionHandler(upload)
+                    .fail(function () {
+                        return outcome = 'failed';
+                    })
+                    .fin(function() {
+                        logger.log(upload.action + ' ' + outcome + ' for :' + source.key);
+                        logger.log('la fin');
 
-                        awk.stdout.on('data', function (data) {
-                            self.emit('data', data);
-                        });
-
-                        awk.stdout.on('end', function (data) {
-                            self.emit('end');
-                        });
-
-                        csvStream.pipe(awk.stdin);
-
-                        self.pause();
-                    }));
-            });
-
-            var violations = '';
-            var out = es.merge(streams);
-
-            out.on('data', function (chunk) {
-                violations += chunk;
-            });
-
-            out.on('end', function () {
-                params.Body = violations;
-                params.Key = params.Key.replace('datapackage.zip', 'violations.csv');
-                params.ContentEncoding = 'utf-8';
-                params.ContentType = 'text/csv';
-
-                s3.putObject(params, function (err, data) {
-                    if (err) {
-                        console.log(err, err.stack);
-                    } else {
-                        context.done(null,'');
-                        console.log(data);
-                    }
-                });
+                        logger.save()
+                            .then(function () {
+                                return context.done(null);
+                            });
+                    })
+                    .done();
             });
         });
-    } else {
-        context.done(null,'');
+
+    var actionHandlers = {
+        validate: function (upload) {
+            logger.log('validate invoked for :' + source.key);
+            return upload.validateResources();
+        },
+        import: function (upload) {
+            logger.log('import invoked for :' + source.key);
+            var rds = new aws.RDS({
+                region: env.awsDefaultRegion,
+                params: {
+                    DBSecurityGroupName: env.rdsSecurityGroup
+                }
+            });
+            var lambdaCIDRIP;
+
+            function getLambdaCIDRIP() {
+                return Q.nfcall(request, 'http://ipinfo.io')
+                    .then(function (args) {
+                        var info = JSON.parse(args[1]);
+                        lambdaCIDRIP = info.ip + '/32';
+                        return logger.log('lambda CIDRIP is ' + lambdaCIDRIP);
+                    });
+            }
+
+            function authorizeCIDRIP() {
+                logger.log('authorizingSecurityGroupIngress for : ' + lambdaCIDRIP);
+                var auth = Q.nbind(rds.authorizeDBSecurityGroupIngress, rds);
+                return auth({ CIDRIP: lambdaCIDRIP })
+                    .fail(function (err) {
+                        if(err.code !== 'AuthorizationAlreadyExists') throw new Error(err);
+                        else return logger.log('AuthorizationAlreadyExists for CIDRIP ' + lambdaCIDRIP);
+                    });
+            };
+
+            function revokeCIDRIP() {
+                logger.log('revokeSecurityGroupIngress for CIDRIP ' + lambdaCIDRIP);
+                var revoke = Q.nbind(rds.revokeDBSecurityGroupIngress, rds);
+                return revoke({ CIDRIP: lambdaCIDRIP });
+            }
+
+            var importResources = upload.importResources.bind(upload);
+
+            return getLambdaCIDRIP()
+                .then(authorizeCIDRIP)
+                .then(importResources)
+                .fin(revokeCIDRIP);
+        }
     }
 };

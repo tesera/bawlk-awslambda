@@ -9,7 +9,7 @@ var evt = {
                     name: 'tesera.datathemes'
                 },
                 object: {
-                    key: 'afgo.pgyi/uploads/60cceca7-651e-4edd-afb6-01c5b097a137/datapackage.zip'
+                    key: 'afgo.pgyi/uploads/yves.richard@tesera.com/tsi/bd11e4c7-5cd8-4b97-8a68-5249db8f3ea8/validate/datapackage.zip'
                 }
             }
         }
@@ -18,8 +18,9 @@ var evt = {
 
 var context = {
     done: function(err, data) {
-        console.log(data);
+        if(err) console.log('lambda exited with errors')
+        else console.log('lambda exited without errors')
     }
 }
 
-lambda.handler(evt, context);
+lambda.handler(evt, context, true);
