@@ -81,7 +81,7 @@ exports.handler = function(event, context, debug) {
             logger.log('validate invoked for :' + source.key);
             return upload.validateResources();
         },
-        import: function (upload) {
+        stage: function (upload) {
             logger.log('import invoked for :' + source.key);
             var rds = new aws.RDS({
                 region: env.awsDefaultRegion,
