@@ -1,22 +1,19 @@
-var sys = require('sys');
-var fs = require('fs');
+'use strict';
 var aws = require('aws-sdk');
-var _ = require('lodash');
 var Q = require('q');
 var request = require('request');
 
 var Upload = require('./lib/upload');
 var Logger = require('./lib/logger');
 
+require('node-env-file')('.env');
+
 exports.handler = function(event, context, debug) {
     // exit if event not from a datapackage.zip put or copy
-    if (!/datapackage.zip$/.test(event.Records[0].s3.object.key)) return context(null);
+    if (!/datapackage.zip$/.test(event.Records[0].s3.object.key)) {
+      return context(null);
+    }
 
-    var env = {
-        awsDefaultRegion: "us-east-1",
-        rdsSecurityGroup: "default",
-        pgUrl: "postgres://localhost/afgo_dev"
-    };
     var source = {
         bucket: event.Records[0].s3.bucket.name,
         key: decodeURIComponent(event.Records[0].s3.object.key)
@@ -32,49 +29,35 @@ exports.handler = function(event, context, debug) {
     };
     var logger = new Logger(loggerOptions);
 
-    function loadEnv() {
-        var envFile = 'env.json';
-        var read = Q.denodeify(fs.readFile);
+    var uploadOptions = {
+        bucket: source.bucket,
+        key: source.key,
+        logger: logger,
+        pgUrl: process.env.PGURL
+    };
+    var upload = new Upload(uploadOptions);
+    logger.log('triggered by put with: ' + source.key);
 
-        return read(envFile).then(function (data) {
-            env = JSON.parse(data.toString('utf8'));
-            return logger.log('loaded env file');
-        }, function () {
-            return logger.log('no env file; using defauls');
-        });
-    }
+    upload.on('ready', function() {
+        logger.log('upload ready and calling: ' + upload.action);
+        var actionHandler = actionHandlers[upload.action];
 
-    loadEnv()
-        .then(function () {
-            var uploadOptions = {
-                bucket: source.bucket,
-                key: source.key,
-                logger: logger,
-                pgUrl: env.pgUrl
-            };
-            var upload = new Upload(uploadOptions);
-            logger.log('triggered by put with: ' + source.key);
+        actionHandler(upload)
+            .fail(function () {
+                outcome = 'failed';
+                return;
+            })
+            .fin(function() {
+                logger.log(upload.action + ' ' + outcome + ' for :' + source.key);
+                logger.log('la fin');
 
-            upload.on('ready', function() {
-                logger.log('upload ready and calling: ' + upload.action);
-                var actionHandler = actionHandlers[upload.action];
-
-                actionHandler(upload)
-                    .fail(function () {
-                        return outcome = 'failed';
-                    })
-                    .fin(function() {
-                        logger.log(upload.action + ' ' + outcome + ' for :' + source.key);
-                        logger.log('la fin');
-
-                        logger.save()
-                            .then(function () {
-                                return context.done(null);
-                            });
-                    })
-                    .done();
-            });
-        });
+                logger.save()
+                    .then(function () {
+                        return context.done(null);
+                    });
+            })
+            .done();
+    });
 
     var actionHandlers = {
         validate: function (upload) {
@@ -84,15 +67,15 @@ exports.handler = function(event, context, debug) {
         stage: function (upload) {
             logger.log('import invoked for :' + source.key);
             var rds = new aws.RDS({
-                region: env.awsDefaultRegion,
+                region: process.env.AWS_RDS_REGION || 'us-east-1',
                 params: {
-                    DBSecurityGroupName: env.rdsSecurityGroup
+                    DBSecurityGroupName: process.env.AWS_RDS_SECURITY_GROUP || 'default'
                 }
             });
             var lambdaCIDRIP;
 
             function getLambdaCIDRIP() {
-                return Q.nfcall(request, 'http://ipinfo.io')
+                return Q.nfcall(request, process.env.IP_SVC)
                     .then(function (args) {
                         var info = JSON.parse(args[1]);
                         lambdaCIDRIP = info.ip + '/32';
@@ -105,10 +88,13 @@ exports.handler = function(event, context, debug) {
                 var auth = Q.nbind(rds.authorizeDBSecurityGroupIngress, rds);
                 return auth({ CIDRIP: lambdaCIDRIP })
                     .fail(function (err) {
-                        if(err.code !== 'AuthorizationAlreadyExists') throw new Error(err);
-                        else return logger.log('AuthorizationAlreadyExists for CIDRIP ' + lambdaCIDRIP);
+                        if(err.code !== 'AuthorizationAlreadyExists') {
+                          throw new Error(err);
+                        } else {
+                          return logger.log('AuthorizationAlreadyExists for CIDRIP ' + lambdaCIDRIP);
+                        }
                     });
-            };
+            }
 
             function revokeCIDRIP() {
                 logger.log('revokeSecurityGroupIngress for CIDRIP ' + lambdaCIDRIP);
@@ -123,5 +109,5 @@ exports.handler = function(event, context, debug) {
                 .then(importResources)
                 .fin(revokeCIDRIP);
         }
-    }
+    };
 };

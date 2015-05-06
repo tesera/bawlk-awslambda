@@ -4,7 +4,7 @@
 # usage:  LAMBDA_EXEC_ROLE_ARN=arn:aws:iam::{iam_id}:role/{role_name} ./scripts/deploy.sh
 # docs:   http://docs.aws.amazon.com/cli/latest/reference/lambda/upload-function.html
 
-zip -r function.zip package.json node_modules/* lib/* env.json index.js
+zip -r function.zip package.json node_modules/* lib/* .env index.js
 
 aws lambda upload-function \
   --function-name bawlk-s3-importer \
@@ -15,3 +15,5 @@ aws lambda upload-function \
   --mode event  \
   --timeout 60  \
   --memory-size 1024
+
+rm function.zip
