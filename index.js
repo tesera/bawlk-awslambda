@@ -11,7 +11,7 @@ require('node-env-file')('.env');
 exports.handler = function(event, context, debug) {
     // exit if event not from a datapackage.zip put or copy
     if (!/datapackage.zip$/.test(event.Records[0].s3.object.key)) {
-      return context(null);
+      return context.done(null);
     }
 
     var source = {
@@ -35,6 +35,11 @@ exports.handler = function(event, context, debug) {
         logger: logger,
         pgUrl: process.env.PGURL
     };
+
+    if(slugs[0] === 'qa.afgo.pgyi') {
+        uploadOptions.pgUrl = uploadOptions.pgUrl.replace('afgo_dev', 'afgo_qa');
+    }
+
     var upload = new Upload(uploadOptions);
     logger.log('triggered by put with: ' + source.key);
 

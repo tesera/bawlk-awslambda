@@ -10,7 +10,7 @@ var evt = {
                     name: 'tesera.datathemes'
                 },
                 object: {
-                    key: 'afgo.pgyi/uploads/yves.richard@tesera.com/tsi/36471b2d-dea0-49d8-8f0b-1ead5d07a162/stage/datapackage.zip'
+                    key: 'afgo.pgyi/uploads/yves.richard@tesera.com/tsi/a52a3673-7ad4-4fee-9966-ad7454b7f15e/stage/datapackage.zip'
                 }
             }
         }
@@ -18,11 +18,11 @@ var evt = {
 };
 
 var context = {
-    done: function(err, data) {
+    done: function(err) {
         if(err) {
             console.log('lambda exited with errors: %s', err);
         } else {
-            console.log('lambda exited without errors: %s', data);
+            console.log('lambda exited without errors.');
         }
     }
 };
