@@ -67,7 +67,12 @@ exports.handler = function(event, context, debug) {
     var actionHandlers = {
         validate: function (upload) {
             logger.log('validate invoked for :' + source.key);
-            return upload.validateResources();
+            return upload.checkForeignKeys().then(function (ok) {
+                console.log('fkey returned: %s', ok);
+                if(ok) {
+                    return upload.validateResources();
+                }
+            });
         },
         stage: function (upload) {
             logger.log('import invoked for :' + source.key);

@@ -21,6 +21,7 @@
     "promise-map-series": "^0.2.1",
     "q": "^1.2.0",
     "request": "^2.53.0",
+    "rimraf": "^2.3.4",
     "stream-reduce": "^1.0.3",
     "through": "^2.3.6"
   }

@@ -10,7 +10,7 @@ var evt = {
                     name: 'tesera.datathemes'
                 },
                 object: {
-                    key: 'afgo.pgyi/uploads/yves.richard@tesera.com/tsi/a52a3673-7ad4-4fee-9966-ad7454b7f15e/stage/datapackage.zip'
+                    key: 'dev.afgo.pgyi/uploads/yves.richard@tesera.com/tsi/75eb99ab-47a1-4bf0-b085-570aaefe3173/validate/datapackage.zip'
                 }
             }
         }
