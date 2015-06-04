@@ -25,7 +25,7 @@ exports.handler = function(event, context, debug) {
     var loggerOptions = {
         bucket: source.bucket,
         key: uploadPath + '/logs.json',
-        debug: debug || false
+        debug: true
     };
     var logger = new Logger(loggerOptions);
 
@@ -68,7 +68,7 @@ exports.handler = function(event, context, debug) {
         validate: function (upload) {
             logger.log('validate invoked for :' + source.key);
             return upload.checkForeignKeys().then(function (ok) {
-                console.log('fkey returned: %s', ok);
+                logger.log('fkey returned: ' + ok);
                 if(ok) {
                     return upload.validateResources();
                 }
