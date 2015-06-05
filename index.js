@@ -8,7 +8,7 @@ var Logger = require('./lib/logger');
 
 require('node-env-file')('.env');
 
-exports.handler = function(event, context, debug) {
+exports.handler = function(event, context) {
     // exit if event not from a datapackage.zip put or copy
     if (!/datapackage.zip$/.test(event.Records[0].s3.object.key)) {
       return context.done(null);
@@ -18,10 +18,10 @@ exports.handler = function(event, context, debug) {
         bucket: event.Records[0].s3.bucket.name,
         key: decodeURIComponent(event.Records[0].s3.object.key)
     };
-
     var slugs = source.key.split('/');
     var uploadPath = slugs.slice(0, -1).join('/');
     var outcome = 'success';
+
     var loggerOptions = {
         bucket: source.bucket,
         key: uploadPath + '/logs.json',
@@ -36,23 +36,25 @@ exports.handler = function(event, context, debug) {
         pgUrl: process.env.PGURL
     };
 
+    logger.log('triggered by put with: ' + source.key);
+
     if(slugs[0] === 'qa.afgo.pgyi') {
         uploadOptions.pgUrl = uploadOptions.pgUrl.replace('afgo_dev', 'afgo_qa');
     }
 
     var upload = new Upload(uploadOptions);
-    logger.log('triggered by put with: ' + source.key);
 
     upload.on('ready', function() {
         logger.log('upload ready and calling: ' + upload.action);
         var actionHandler = actionHandlers[upload.action];
 
         actionHandler(upload)
-            .fail(function () {
+            .catch(function (err) {
+                if (err) logger.error(err);
                 outcome = 'failed';
-                return;
+                return false;
             })
-            .fin(function() {
+            .finally(function() {
                 logger.log(upload.action + ' ' + outcome + ' for :' + source.key);
                 logger.log('la fin');
 
@@ -117,7 +119,7 @@ exports.handler = function(event, context, debug) {
             return getLambdaCIDRIP()
                 .then(authorizeCIDRIP)
                 .then(importResources)
-                .fin(revokeCIDRIP);
+                .finally(revokeCIDRIP);
         }
     };
 };
