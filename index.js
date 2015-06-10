@@ -36,7 +36,7 @@ exports.handler = function(event, context) {
         pgUrl: process.env.PGURL
     };
 
-    logger.log('triggered by put with: ' + source.key);
+    logger.log('triggered by requestId ' + event.awsRequestId + ' with PUT of: ' + source.key);
 
     if(slugs[0] === 'qa.afgo.pgyi') {
         uploadOptions.pgUrl = uploadOptions.pgUrl.replace('afgo_dev', 'afgo_qa');
@@ -69,9 +69,8 @@ exports.handler = function(event, context) {
     var actionHandlers = {
         validate: function (upload) {
             logger.log('validate invoked for :' + source.key);
-            return upload.checkForeignKeys().then(function (ok) {
-                logger.log('fkey returned: ' + ok);
-                if(ok) {
+            return upload.checkForeignKeys().then(function () {
+                if(!upload.errors) {
                     return upload.validateResources();
                 }
             });
