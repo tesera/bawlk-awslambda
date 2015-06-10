@@ -28,9 +28,9 @@ check(){
 
 for child in "${plot_childs[@]}"
 do
-    check $plot '$1 $2' $child '$1 $2'
+    check $plot '$1 "-" $2' $child '$1 "-" $2'
 done
 
-check $trees '$1 $2 $3' $trees_measurement '$1 $2 $4'
-check $plot_measurement '$1 $2 $3' $trees_measurement '$1 $2 $3'
-check $plot_measurement '$1 $2 $3' $regeneration '$1 $2 $3'
+check $trees '$1 "-" $2 "-" $3' $trees_measurement '$1 "-" $2 "-" $4'
+check $plot_measurement '$1 "-" $2 "-" $3' $trees_measurement '$1 "-" $2 "-" $3'
+check $plot_measurement '$1 "-" $2 "-" $3' $regeneration '$1 "-" $2 "-" $3'
