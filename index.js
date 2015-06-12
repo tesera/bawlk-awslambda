@@ -70,7 +70,7 @@ exports.handler = function(event, context) {
         validate: function (upload) {
             logger.log('validate invoked for :' + source.key);
             return upload.checkForeignKeys().then(function () {
-                if(!upload.errors && upload.meta.validation.valid) {
+                if(!upload.meta.errors && upload.meta.validation.valid) {
                     return upload.validateResources();
                 }
             });
