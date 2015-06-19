@@ -6,14 +6,8 @@
 
 zip -r function.zip package.json node_modules/* lib/* .env  fkeychecks.sh index.js
 
-aws lambda upload-function \
-  --function-name bawlk-s3-importer \
-  --function-zip function.zip  \
-  --runtime nodejs  \
-  --role arn:aws:iam::674223647607:role/lambda_exec_role \
-  --handler index.handler  \
-  --mode event  \
-  --timeout 60  \
-  --memory-size 1024
+aws lambda update-function-code \
+    --function-name bawlk-s3-importer \
+    --zip-file fileb://function.zip
 
 rm function.zip
