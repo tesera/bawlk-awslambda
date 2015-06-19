@@ -38,9 +38,9 @@ exports.handler = function(event, context) {
 
     logger.log('triggered by requestId ' + event.awsRequestId + ' with PUT of: ' + source.key);
 
-    if(slugs[0] === 'qa.afgo.pgyi') {
-        uploadOptions.pgUrl = uploadOptions.pgUrl.replace('afgo_dev', 'afgo_qa');
-    }
+    // parse out env from bucket namespace i.e. qa.afgo.pgyi = qa
+    var env = slugs[0].split('.')[0];
+    uploadOptions.pgUrl = uploadOptions.pgUrl.replace('_dev', '_' + env);
 
     var upload = new Upload(uploadOptions);
 
