@@ -1,5 +1,10 @@
+#!/usr/bin/env node
+
+//usage: ./invoke.js s3://tesera.datathemes/dev.afgo.pgyi/uploads/yves.richard@tesera.com/blue/3c3b1317-bb2e-4dc8-a11c-dde03233a671/stage/datapackage.zip
+
 'use strict';
 var lambda = require('./index.js');
+var s3Url = require('url').parse(process.argv[2]);
 
 var evt = {
     Records:[
@@ -7,15 +12,17 @@ var evt = {
             eventName: 'ObjectCreated:Put',
             s3: {
                 bucket: {
-                    name: 'tesera.datathemes'
+                    name: s3Url.hostname
                 },
                 object: {
-                    key: 'dev.afgo.pgyi/uploads/yves.richard@tesera.com/tsi/bc9da3a5-9dcc-401b-846d-9f060fc43ce9/validate/datapackage.zip'
+                    key: s3Url.path.substring(1, s3Url.path.length)
                 }
             }
         }
     ]
 };
+
+console.info(JSON.stringify(evt));
 
 var context = {
     done: function(err) {
