@@ -23,7 +23,7 @@ check(){
     awk -F, " \
         NR == FNR { k[$2]=1; next; } \
         NF { if(!k[$4]) vs[$4] ? vs[$4]++ : vs[$4]=1; } \
-        END { for (v in vs) print \"$3\" FS \"n/a\" FS \"foreign-key\" FS \"missing referenced parent $1: \" v FS \"error\" FS vs[v]}" $wd/$1 $wd/$3
+        END { for (v in vs) print \"$3\" FS \"n/a\" FS \"foreign-key\" FS \"missing parent record in $1: \" v FS \"error\" FS vs[v]}" $wd/$1 $wd/$3
 }
 
 for child in "${plot_childs[@]}"
