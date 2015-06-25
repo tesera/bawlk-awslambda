@@ -4,7 +4,7 @@
 # usage:  	./scripts/deploy.sh
 # docs:   	http://docs.aws.amazon.com/cli/latest/reference/lambda/upload-function.html
 
-zip -r function.zip package.json node_modules/* lib/* .env  fkeychecks.sh index.js
+zip -r function.zip package.json node_modules/* lib/* .env  fkeychecks.sh index.js gawk
 
 aws lambda update-function-code \
     --function-name bawlk-s3-importer \
