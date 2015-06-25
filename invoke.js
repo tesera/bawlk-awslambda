@@ -22,8 +22,6 @@ var evt = {
     ]
 };
 
-console.info(JSON.stringify(evt));
-
 var context = {
     done: function(err) {
         if(err) {

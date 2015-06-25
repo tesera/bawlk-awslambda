@@ -71,7 +71,14 @@ exports.handler = function(event, context) {
             logger.log('validate invoked for :' + source.key);
             return upload.checkForeignKeys().then(function () {
                 if(!upload.meta.errors && upload.meta.validation.valid) {
-                    return upload.validateResources();
+                    return upload.validateResources('summary')
+                        .then(function () {
+                            if(!upload.meta.validation.valid){
+                                return upload.validateResources('full');
+                            } else {
+                                return;
+                            }
+                        });
                 }
             });
         },
