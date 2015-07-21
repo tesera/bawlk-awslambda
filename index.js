@@ -1,10 +1,14 @@
 'use strict';
+var fs = require('fs');
+var path = require('path');
 var aws = require('aws-sdk');
 var Q = require('q');
 var request = require('request');
+var winston = require('winston');
+var aws = require('aws-sdk');
+var spawn = require('child_process').spawn
 
 var Upload = require('./lib/upload');
-var Logger = require('./lib/logger');
 
 require('node-env-file')('.env');
 
@@ -19,33 +23,34 @@ exports.handler = function(event, context) {
         key: decodeURIComponent(event.Records[0].s3.object.key)
     };
     var slugs = source.key.split('/');
-    var uploadPath = slugs.slice(0, -1).join('/');
     var outcome = 'success';
-
-    var loggerOptions = {
-        bucket: source.bucket,
-        key: uploadPath + '/logs.json',
-        debug: true
-    };
-    var logger = new Logger(loggerOptions);
 
     var uploadOptions = {
         bucket: source.bucket,
         key: source.key,
-        logger: logger,
-        pgUrl: process.env.PGURL
+        pgUrl: process.env.PGURL,
+        gawk: event.local ? 'gawk' : './gawk'
     };
-
-    logger.log('triggered by requestId ' + event.awsRequestId + ' with PUT of: ' + source.key);
 
     // parse out env from bucket namespace i.e. qa.afgo.pgyi = qa
     var env = slugs[0].split('.')[0];
     uploadOptions.pgUrl = uploadOptions.pgUrl.replace('_dev', '_' + env);
 
+    var s3 = new aws.S3({params: {Bucket: source.bucket}});
     var upload = new Upload(uploadOptions);
 
+    var logger = new (winston.Logger)({
+        transports: [
+            new (winston.transports.Console)(),
+            new (winston.transports.File)({ filename: path.join(upload.localPath, 'logs.ldj') })
+        ]
+    });
+
+    upload.logger = logger;
+
     upload.on('ready', function() {
-        logger.log('upload ready and calling: ' + upload.action);
+        logger.log('info', 'triggered by requestId ' + event.awsRequestId + ' with PUT of: ' + source.key);
+        logger.log('info', 'upload ready and calling: ' + upload.action);
         var actionHandler = actionHandlers[upload.action];
 
         actionHandler(upload)
@@ -55,35 +60,29 @@ exports.handler = function(event, context) {
                 return false;
             })
             .finally(function() {
-                logger.log(upload.action + ' ' + outcome + ' for :' + source.key);
-                logger.log('la fin');
-
-                logger.save()
-                    .then(function () {
-                        return context.done(null);
+                var deferred = Q.defer();
+                var args = ['s3', 'sync', upload.localPath, 's3://tesera.datathemes/' + upload.path];
+                var sync = spawn('aws', args);
+                sync.stdout.on('end', function () {
+                    require('rimraf')(upload.localPath, function () {
+                        deferred.resolve();
                     });
+                });
+                return deferred.promise;
             })
             .done();
     });
 
     var actionHandlers = {
         validate: function (upload) {
-            logger.log('validate invoked for :' + source.key);
-            return upload.checkForeignKeys().then(function () {
-                if(!upload.meta.errors && upload.meta.validation.valid) {
-                    return upload.validateResources('summary')
-                        .then(function () {
-                            if(!upload.meta.validation.valid){
-                                return upload.validateResources('full');
-                            } else {
-                                return;
-                            }
-                        });
-                }
-            });
+            logger.log('info', 'validate invoked for :' + source.key);
+            return upload.checkForeignKeys()
+                .then(function () {
+                    return upload.validateResources();
+                });
         },
         stage: function (upload) {
-            logger.log('import invoked for :' + source.key);
+            logger.log('info', 'import invoked for :' + source.key);
             var rds = new aws.RDS({
                 region: process.env.AWS_RDS_REGION || 'us-east-1',
                 params: {
@@ -97,25 +96,25 @@ exports.handler = function(event, context) {
                     .then(function (args) {
                         var info = JSON.parse(args[1]);
                         lambdaCIDRIP = info.ip + '/32';
-                        return logger.log('lambda CIDRIP is ' + lambdaCIDRIP);
+                        return logger.log('info', 'lambda CIDRIP is ' + lambdaCIDRIP);
                     });
             }
 
             function authorizeCIDRIP() {
-                logger.log('authorizingSecurityGroupIngress for : ' + lambdaCIDRIP);
+                logger.log('info', 'authorizingSecurityGroupIngress for : ' + lambdaCIDRIP);
                 var auth = Q.nbind(rds.authorizeDBSecurityGroupIngress, rds);
                 return auth({ CIDRIP: lambdaCIDRIP })
                     .fail(function (err) {
                         if(err.code !== 'AuthorizationAlreadyExists') {
                           throw new Error(err);
                         } else {
-                          return logger.log('AuthorizationAlreadyExists for CIDRIP ' + lambdaCIDRIP);
+                          return logger.log('info', 'AuthorizationAlreadyExists for CIDRIP ' + lambdaCIDRIP);
                         }
                     });
             }
 
             function revokeCIDRIP() {
-                logger.log('revokeSecurityGroupIngress for CIDRIP ' + lambdaCIDRIP);
+                logger.log('info', 'revokeSecurityGroupIngress for CIDRIP ' + lambdaCIDRIP);
                 var revoke = Q.nbind(rds.revokeDBSecurityGroupIngress, rds);
                 return revoke({ CIDRIP: lambdaCIDRIP });
             }

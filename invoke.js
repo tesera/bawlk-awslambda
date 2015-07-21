@@ -19,7 +19,8 @@ var evt = {
                 }
             }
         }
-    ]
+    ],
+    local: true
 };
 
 var context = {

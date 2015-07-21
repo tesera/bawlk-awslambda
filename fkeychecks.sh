@@ -26,6 +26,8 @@ check(){
         END { for (v in vs) print \"$3\" FS \"n/a\" FS \"foreign-key\" FS \"missing parent record in $1: \" v FS \"error\" FS vs[v]}" $wd/$1 $wd/$3
 }
 
+echo file_name,field_name,rule,message,violation_severity,violation_count
+
 for child in "${plot_childs[@]}"
 do
     check $plot '$1 "-" $2' $child '$1 "-" $2'

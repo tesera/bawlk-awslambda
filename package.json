@@ -21,9 +21,10 @@
     "pg-transact": "^1.0.1",
     "promise-map-series": "^0.2.1",
     "q": "^1.2.0",
-    "request": "^2.53.0",
+    "request": "^2.59.0",
     "rimraf": "^2.3.4",
     "stream-reduce": "^1.0.3",
-    "through": "^2.3.6"
+    "through": "^2.3.6",
+    "winston": "^1.0.1"
   }
 }
