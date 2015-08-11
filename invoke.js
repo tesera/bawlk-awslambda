@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-//usage: ./invoke.js s3://tesera.datathemes/dev.afgo.pgyi/uploads/yves.richard@tesera.com/blue/3c3b1317-bb2e-4dc8-a11c-dde03233a671/stage/datapackage.zip
+//usage: ./invoke.js s3://tesera.dataprofiles/dev.afgo.pgyi/users/yves.richard@tesera.com/upload/datapackage.zip
 
 'use strict';
 var lambda = require('./index.js');
@@ -32,5 +32,6 @@ var context = {
         }
     }
 };
+console.log('invoking with ', JSON.stringify(evt));
 
 lambda.handler(evt, context, true);

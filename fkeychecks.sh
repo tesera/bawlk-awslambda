@@ -21,12 +21,12 @@ plot_childs=($plot_measurement $trees $treatment $disturbance $regeneration $pho
 
 check(){
     awk -F, " \
-        NR == FNR { k[$2]=1; next; } \
+        NR == FNR { p=$2; k[$2]=1; next; } \
         NF { if(!k[$4]) vs[$4] ? vs[$4]++ : vs[$4]=1; } \
-        END { for (v in vs) print \"$3\" FS \"n/a\" FS \"foreign-key\" FS \"missing parent record in $1: \" v FS \"error\" FS vs[v]}" $wd/$1 $wd/$3
+        END { for (v in vs) print NR FS \"$3\" FS p FS \"foreign-key\" FS \"error\" FS \"missing parent record in $1: \" v}" $wd/$1 $wd/$3
 }
 
-echo file_name,field_name,rule,message,violation_severity,violation_count
+echo source_row_index,violating_table,violation_key,violation_type,violation_severity,violation_comment
 
 for child in "${plot_childs[@]}"
 do
