@@ -17,8 +17,7 @@ exports.handler = function(event, context) {
     };
     var uploadRoot = source.key.replace('datapackage.zip', '');
     var uploadPath = 's3://' + source.bucket + '/' + uploadRoot;
-    var uploadId = source.key.split('/').slice(-2)[0];
-    var wd = path.join('/tmp', uploadId);
+    var wd = path.join('/tmp', uploadRoot);
 
     if (!/datapackage.zip$/.test(source.key)) {
         return context.done(null);
