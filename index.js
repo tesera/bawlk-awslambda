@@ -81,7 +81,7 @@ exports.handler = function(event, context) {
             var violationsStream = fs.createWriteStream(path.join(wd, 'violations.csv'), {flags: 'a'});
             var args = [
                 '-v', 'action=validate',
-                '-v', 'CSVFILENAME='+resource.path.split('/')[3],
+                '-v', 'CSVFILENAME=' + resource.path.split('/').slice(-1)[0],
                 '-f', resource.validator,
                 resource.path
             ];
@@ -116,6 +116,48 @@ exports.handler = function(event, context) {
     //     });
     // }
 
+    function cleanup() {
+        var readdir = Q.denodeify(fs.readdir);
+
+        return readdir(wd)
+            .then(function (files) {
+                var puts = files.map(function (file) {
+                    var deferred = Q.defer();
+                    var params = {
+                        Key: path.join(uploadRoot, file),
+                        Body: fs.createReadStream(path.join(wd, file))
+                    };
+
+                    logger.log('info', 'putting', params.Key);
+
+                    s3.upload(params).send(function () {
+                        logger.log('info', 'put', params.Key);
+                        deferred.resolve();
+                    });
+
+                    return deferred.promise;
+                });
+                return Q.allSettled(puts);
+            }).then(function () {
+                logger.log('info', 'sync complete to:', uploadPath);
+                require('rimraf')(wd, function () {
+                    logger.log('info', 'all done');
+                });
+            });
+    }
+
+    (function doCleanup () {
+        if (context.getRemainingTimeInMillis() < 5000) {
+            console.log('cleaning up');
+            cleanup();
+            spawn('killall gawk');
+            console.log(fs.readdirSync('/tmp'));
+            context.fail();
+        } else {
+            setTimeout(doCleanup, 1000);
+        }
+    })();
+
     var datapackage;
     s3.getObject({Key: source.key}, function (err, datapackageData) {
         var zip = new AdmZip(datapackageData.Body);
@@ -146,35 +188,7 @@ exports.handler = function(event, context) {
             .then(checkFkeys)
             .then(validate)
             // .then(insert)
-            .finally(function() {
-                var readdir = Q.denodeify(fs.readdir);
-
-                return readdir(wd)
-                    .then(function (files) {
-                        var puts = files.map(function (file) {
-                            var deferred = Q.defer();
-                            var params = {
-                                Key: path.join(uploadRoot, file),
-                                Body: fs.createReadStream(path.join(wd, file))
-                            };
-
-                            logger.log('info', 'putting', params.Key);
-
-                            s3.upload(params).send(function () {
-                                logger.log('info', 'put', params.Key);
-                                deferred.resolve();
-                            });
-
-                            return deferred.promise;
-                        });
-                        return Q.allSettled(puts);
-                    }).then(function () {
-                        logger.log('info', 'sync complete to:', uploadPath);
-                        require('rimraf')(wd, function () {
-                            logger.log('info', 'all done');
-                        });
-                    });
-            })
+            .finally(cleanup)
             .done();
     });
 };
