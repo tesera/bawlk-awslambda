@@ -8,8 +8,10 @@ var request = require('request');
 var winston = require('winston');
 var AdmZip = require('adm-zip');
 var mapSeries = require('promise-map-series');
+var rimraf = require('rimraf');
 
 exports.handler = function(event, context) {
+    var datapackage;
     var gawk = './gawk';
     var source = {
         bucket: event.Records[0].s3.bucket.name,
@@ -17,7 +19,8 @@ exports.handler = function(event, context) {
     };
     var uploadRoot = source.key.replace('datapackage.zip', '');
     var uploadPath = 's3://' + source.bucket + '/' + uploadRoot;
-    var wd = path.join('/tmp', uploadRoot);
+    var pgImportPath = '/tmp/pg-import';
+    var wd = path.join(pgImportPath, uploadRoot);
 
     if (!/datapackage.zip$/.test(source.key)) {
         return context.done(null);
@@ -31,6 +34,34 @@ exports.handler = function(event, context) {
     });
 
     var s3 = new aws.S3({ params: { Bucket: source.bucket } });
+
+    function initialize() {
+        logger.log('info', 'aws lambda context: ' + JSON.stringify(context));
+
+        return clearwd()
+            .then(function () {
+                var inits = datapackage.resources.map(function (resource) {
+                    var url = resource.validator;
+                    var deferred = Q.defer();
+
+                    logger.log('info', 'initializing', resource.path);
+
+                    resource.path = path.join(wd, resource.path);
+                    resource.validator = resource.path.replace('.csv', '.awk');
+
+                    request(url)
+                        .pipe(fs.createWriteStream(resource.validator))
+                        .on('close', function () {
+                            logger.log('info', 'initialized', resource.path);
+                            deferred.resolve();
+                        });
+
+                    return deferred.promise;
+                });
+
+                return Q.allSettled(inits);
+            });
+    }
 
     function checkFkeys() {
         var deferred = Q.defer();
@@ -77,6 +108,14 @@ exports.handler = function(event, context) {
     function validate () {
         logger.log('info', 'validating resources');
 
+        (function watchTime () {
+            if (context.getRemainingTimeInMillis() < 5000) {
+                throw new Error('running out of time Scotty, time to start cleaning up.');
+            } else {
+                setTimeout(watchTime, 1000);
+            }
+        })();
+
         var validates = mapSeries(datapackage.resources, function (resource) {
             var violationsStream = fs.createWriteStream(path.join(wd, 'violations.csv'), {flags: 'a'});
             var args = [
@@ -93,30 +132,7 @@ exports.handler = function(event, context) {
         });
     }
 
-    // function insert () {
-    //     logger.log('info', 'validating resources');
-
-    //     var inserts = mapSeries(datapackage.resources, function (resource) {
-    //         var insertStream = fs.createWriteStream(path.join(wd, 'insert.sql'), {flags: 'a'});
-
-    //         var args = [
-    //             '-v', 'action=insert',
-    //             '-v', 'addfields=upload_id',
-    //             '-v', 'addvals=' + uploadId,
-    //             '-v', 'CSVFILENAME='+resource.path.split('/')[3],
-    //             '-v', 'schema=psp.',
-    //             '-f', resource.validator,
-    //             resource.path
-    //         ];
-    //         return invoke(args, insertStream);
-    //     });
-
-    //     return Q.all(inserts).then(function () {
-    //         logger.log('info', 'all inserts complete');
-    //     });
-    // }
-
-    function cleanup() {
+    function syncToS3() {
         var readdir = Q.denodeify(fs.readdir);
 
         return readdir(wd)
@@ -137,58 +153,34 @@ exports.handler = function(event, context) {
 
                     return deferred.promise;
                 });
-                return Q.allSettled(puts);
-            }).then(function () {
-                logger.log('info', 'sync complete to:', uploadPath);
-                require('rimraf')(wd, function () {
-                    logger.log('info', 'all done');
+
+                return Q.allSettled(puts).then(function () {
+                    logger.log('info', 'sync complete to:', uploadPath);
                 });
             });
     }
 
-    (function doCleanup () {
-        if (context.getRemainingTimeInMillis() < 5000) {
-            console.log('cleaning up');
-            cleanup();
-            spawn('killall gawk');
-            console.log(fs.readdirSync('/tmp'));
-            context.fail();
-        } else {
-            setTimeout(doCleanup, 1000);
-        }
-    })();
+    function clearwd() {
+        return Q.denodeify(rimraf)(pgImportPath).then(function () {
+            context.done(null, '/tmp cleared for : ' + source.key);
+        });
+    }
 
-    var datapackage;
     s3.getObject({Key: source.key}, function (err, datapackageData) {
         var zip = new AdmZip(datapackageData.Body);
         zip.extractAllTo(wd);
         datapackage = fs.readFileSync(path.join(wd, '/datapackage.json'), {encoding: 'utf8'});
         datapackage = JSON.parse(datapackage);
 
-        var inits = datapackage.resources.map(function (resource) {
-            var url = resource.validator;
-            var deferred = Q.defer();
-
-            logger.log('info', 'initializing', resource.path);
-
-            resource.path = path.join(wd, resource.path);
-            resource.validator = resource.path.replace('.csv', '.awk');
-
-            request(url)
-                .pipe(fs.createWriteStream(resource.validator))
-                .on('close', function () {
-                    logger.log('info', 'initialized', resource.path);
-                    deferred.resolve();
-                });
-
-            return deferred.promise;
-        });
-
-        Q.allSettled(inits)
+        return initialize()
             .then(checkFkeys)
             .then(validate)
-            // .then(insert)
-            .finally(cleanup)
+            .then(syncToS3)
+            .catch(function () {
+                console.log('timeout; roger that Scotty... cleaning up');
+                spawn('killall gawk'); //todo: ./gawk ??
+            })
+            .finally(clearwd)
             .done();
     });
 };
