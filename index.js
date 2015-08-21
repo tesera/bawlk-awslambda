@@ -35,11 +35,16 @@ exports.handler = function(event, context) {
 
     var s3 = new aws.S3({ params: { Bucket: source.bucket } });
 
-    function initialize() {
+    function initialize(datapackageData) {
         logger.log('info', 'aws lambda context: ' + JSON.stringify(context));
 
-        return clearwd()
+        return clearwd() // to make sure the last function didn't leave any artifacts
             .then(function () {
+                var zip = new AdmZip(datapackageData.Body);
+                zip.extractAllTo(wd);
+                datapackage = fs.readFileSync(path.join(wd, '/datapackage.json'), {encoding: 'utf8'});
+                datapackage = JSON.parse(datapackage);
+
                 var inits = datapackage.resources.map(function (resource) {
                     var url = resource.validator;
                     var deferred = Q.defer();
@@ -108,13 +113,11 @@ exports.handler = function(event, context) {
     function validate () {
         logger.log('info', 'validating resources');
 
-        (function watchTime () {
+        setInterval(function () {
             if (context.getRemainingTimeInMillis() < 5000) {
                 throw new Error('running out of time Scotty, time to start cleaning up.');
-            } else {
-                setTimeout(watchTime, 1000);
             }
-        })();
+        }, 10000);
 
         var validates = mapSeries(datapackage.resources, function (resource) {
             var violationsStream = fs.createWriteStream(path.join(wd, 'violations.csv'), {flags: 'a'});
@@ -162,25 +165,22 @@ exports.handler = function(event, context) {
 
     function clearwd() {
         return Q.denodeify(rimraf)(pgImportPath).then(function () {
-            context.done(null, '/tmp cleared for : ' + source.key);
+            logger.log('info', '/tmp cleared for : ' + source.key);
         });
     }
 
     s3.getObject({Key: source.key}, function (err, datapackageData) {
-        var zip = new AdmZip(datapackageData.Body);
-        zip.extractAllTo(wd);
-        datapackage = fs.readFileSync(path.join(wd, '/datapackage.json'), {encoding: 'utf8'});
-        datapackage = JSON.parse(datapackage);
-
-        return initialize()
+        return initialize(datapackageData)
             .then(checkFkeys)
             .then(validate)
             .then(syncToS3)
-            .catch(function () {
-                console.log('timeout; roger that Scotty... cleaning up');
-                spawn('killall gawk'); //todo: ./gawk ??
+            .catch(function (err) {
+                logger.log('error', err);
+                spawn('killall', ['gawk']); //todo: ./gawk ??
             })
-            .finally(clearwd)
+            .finally(function () {
+                clearwd().then(context.done);
+            })
             .done();
     });
 };

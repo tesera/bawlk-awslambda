@@ -23,6 +23,8 @@ var evt = {
     local: true
 };
 
+var start = Date.now();
+
 var context = {
     done: function(err) {
         if(err) {
@@ -30,6 +32,10 @@ var context = {
         } else {
             console.log('lambda exited without errors.');
         }
+        process.exit(0);
+    },
+    getRemainingTimeInMillis: function  () {
+        return 60000 - (Date.now() - start);
     }
 };
 console.log('invoking with ', JSON.stringify(evt));
