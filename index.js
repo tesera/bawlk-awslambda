@@ -11,6 +11,7 @@ var mapSeries = require('promise-map-series');
 var rimraf = require('rimraf');
 
 exports.handler = function(event, context) {
+    var start = Date.now();
     var datapackage;
     var gawk = './gawk';
     var source = {
@@ -36,7 +37,7 @@ exports.handler = function(event, context) {
     var s3 = new aws.S3({ params: { Bucket: source.bucket } });
 
     function initialize(datapackageData) {
-        logger.log('info', 'aws lambda context: ' + JSON.stringify(context));
+        logger.log('info', context.awsRequestId, 'aws lambda context: ' + JSON.stringify(context));
 
         return clearwd() // to make sure the last function didn't leave any artifacts
             .then(function () {
@@ -49,7 +50,7 @@ exports.handler = function(event, context) {
                     var url = resource.validator;
                     var deferred = Q.defer();
 
-                    logger.log('info', 'initializing', resource.path);
+                    logger.log('info', context.awsRequestId, 'initializing', resource.path);
 
                     resource.path = path.join(wd, resource.path);
                     resource.validator = resource.path.replace('.csv', '.awk');
@@ -57,7 +58,7 @@ exports.handler = function(event, context) {
                     request(url)
                         .pipe(fs.createWriteStream(resource.validator))
                         .on('close', function () {
-                            logger.log('info', 'initialized', resource.path);
+                            logger.log('info', context.awsRequestId, 'initialized', resource.path);
                             deferred.resolve();
                         });
 
@@ -72,12 +73,12 @@ exports.handler = function(event, context) {
         var deferred = Q.defer();
         var violationsStream = fs.createWriteStream(path.join(wd, 'violations.csv'), {flags: 'a'});
 
-        logger.log('info', 'checking foreign keys for upload');
+        logger.log('info', context.awsRequestId, 'checking foreign keys for upload');
 
         var checker = spawn('bash', [path.resolve(__dirname, './fkeychecks.sh'), wd]);
 
         checker.stdout.on('end', function () {
-            logger.log('info', 'checked foreign keys finished');
+            logger.log('info', context.awsRequestId, 'checked foreign keys finished');
             deferred.resolve();
         });
 
@@ -94,12 +95,23 @@ exports.handler = function(event, context) {
     function invoke (args, outputStream) {
         var deferred = Q.defer();
 
-        logger.log('info', 'invoking', args);
+        logger.log('info', context.awsRequestId, 'invoking', args);
 
         var awk = spawn(gawk, args);
 
+        var interval = setInterval(function () {
+            var left = 60000 - (Date.now() - start);
+            if (left < 5000) {
+                awk.kill();
+                throw new Error('running out of time Scotty, time to start cleaning up.');
+            }
+        }, 1000);
+
         awk.stdout.setEncoding('utf8');
-        awk.stdout.on('end', deferred.resolve);
+        awk.stdout.on('end', function () {
+            clearInterval(interval);
+            deferred.resolve();
+        });
         awk.stdout.on('error', function (err) {
             logger.log('error', 'invoke error', args, err);
             deferred.reject();
@@ -111,13 +123,7 @@ exports.handler = function(event, context) {
     }
 
     function validate () {
-        logger.log('info', 'validating resources');
-
-        setInterval(function () {
-            if (context.getRemainingTimeInMillis() < 5000) {
-                throw new Error('running out of time Scotty, time to start cleaning up.');
-            }
-        }, 10000);
+        logger.log('info', context.awsRequestId, 'validating resources');
 
         var validates = mapSeries(datapackage.resources, function (resource) {
             var violationsStream = fs.createWriteStream(path.join(wd, 'violations.csv'), {flags: 'a'});
@@ -131,7 +137,7 @@ exports.handler = function(event, context) {
         });
 
         return Q.all(validates).then(function () {
-            logger.log('info', 'all violations complete');
+            logger.log('info', context.awsRequestId, 'all violations complete');
         });
     }
 
@@ -147,10 +153,10 @@ exports.handler = function(event, context) {
                         Body: fs.createReadStream(path.join(wd, file))
                     };
 
-                    logger.log('info', 'putting', params.Key);
+                    logger.log('info', context.awsRequestId, 'putting', params.Key);
 
                     s3.upload(params).send(function () {
-                        logger.log('info', 'put', params.Key);
+                        logger.log('info', context.awsRequestId, 'put', params.Key);
                         deferred.resolve();
                     });
 
@@ -158,14 +164,14 @@ exports.handler = function(event, context) {
                 });
 
                 return Q.allSettled(puts).then(function () {
-                    logger.log('info', 'sync complete to:', uploadPath);
+                    logger.log('info', context.awsRequestId, 'sync complete to:', uploadPath);
                 });
             });
     }
 
     function clearwd() {
         return Q.denodeify(rimraf)(pgImportPath).then(function () {
-            logger.log('info', '/tmp cleared for : ' + source.key);
+            console.log('info', context.awsRequestId, '/tmp cleared for : ' + source.key);
         });
     }
 
