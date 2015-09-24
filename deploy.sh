@@ -4,7 +4,7 @@
 # usage:  bash ./scripts/deploy.sh
 # docs:   http://docs.aws.amazon.com/cli/latest/reference/lambda/upload-function.html
 
-BUCKET=tesera.svc.datapackage-validator
+BUCKET="tesera.svc.$1"
 
 aws s3 mb "s3://$BUCKET"
 
@@ -14,7 +14,8 @@ cat << EOF | aws s3 cp - "s3://$BUCKET/readme.txt" --content-type 'text/plain'
 
 bucket:         "${BUCKET}"
 owner:          yves.richard@tesera.com
-project:        https://github.com/tesera/datapackage-validator
+project:        https://github.com/tesera/datapackage-validator-awslambda
+version:        "${CI_COMMIT_ID}"
 description:    awslambda-datapackage-validator is an AWS Lambda function used for validating
                 csv tabular datapackages (http://dataprotocols.org/tabular-data-package/index.html)
                 against a JSON Table Schema (http://dataprotocols.org/json-table-schema/index.html)
@@ -24,11 +25,9 @@ EOF
 # archive function assets into a zip archive
 zip -r function.zip package.json node_modules/* fkeychecks.sh index.js gawk
 
-# todo: create function if not exist
-
 # upload function to aws
 aws lambda update-function-code \
-    --function-name pg-import \
+    --function-name "$1" \
     --zip-file fileb://function.zip
 
 # cleanup
