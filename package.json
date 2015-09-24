@@ -1,7 +1,8 @@
 {
-  "name": "bawlk-awslambda",
-  "version": "0.0.2",
-  "description": "AWS Lambda function for proccessing datapackages uploaded to s3 using bawlk.",
+  "name": "datapackage-validator-awslambda",
+  "version": "0.0.5",
+  "description": "AWS Lambda function for validating datapackages using bawlk.",
+  "repository": "https://github.com/tesera/datapackage-validator-awslambda",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
