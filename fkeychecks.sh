@@ -27,7 +27,8 @@ check(){
     awk -F, " \
         NR == FNR { pkey=$2; pkeys[pkey]=1; next; } \
         NF { fkey=$4; if(!pkeys[fkey]) orphans[fkey]=FNR } \
-        END { for (orphan in orphans) print orphans[orphan] FS \"$3\" FS orphan FS \"foreign-key\" FS \"error\" FS \"missing parent record in $1: \" orphan}" "$wd/$1" "$wd/$3"
+        END { for (orphan in orphans) print orphans[orphan] FS \"$3\" FS orphan FS \"foreign-key\" FS \"error\" FS \"missing parent record in $1: \" orphan}" "$wd/$1" "$wd/$3" | \
+        sed "s/\"/'/g"
 }
 
 # echo violation csv record headers
