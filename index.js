@@ -34,7 +34,12 @@ exports.handler = function(event, context) {
         ]
     });
 
-    var s3 = new aws.S3({ params: { Bucket: source.bucket } });
+    var s3 = new aws.S3({
+        region: process.env.region || 'us-east-1',
+        params: {
+            Bucket: source.bucket
+        }
+    });
 
     function initialize(datapackageData) {
         logger.log('info', context.awsRequestId, 'aws lambda context: ' + JSON.stringify(context));
@@ -43,6 +48,7 @@ exports.handler = function(event, context) {
             .then(function () {
                 var zip = new AdmZip(datapackageData.Body);
                 zip.extractAllTo(wd);
+                console.log(fs.readdirSync(wd))
                 datapackage = fs.readFileSync(path.join(wd, '/datapackage.json'), {encoding: 'utf8'});
                 datapackage = JSON.parse(datapackage);
 
@@ -155,7 +161,9 @@ exports.handler = function(event, context) {
 
                     logger.log('info', context.awsRequestId, 'putting', params.Key);
 
-                    s3.upload(params).send(function () {
+                    s3.upload(params).send(function (err) {
+                        if (err) return context.fail(err);
+
                         logger.log('info', context.awsRequestId, 'put', params.Key);
                         deferred.resolve();
                     });
@@ -175,7 +183,10 @@ exports.handler = function(event, context) {
         });
     }
 
+    console.log('getting datapackage: ' + source.key);
     s3.getObject({Key: source.key}, function (err, datapackageData) {
+        if (err) return context.fail(err);
+
         return initialize(datapackageData)
             .then(checkFkeys)
             .then(validate)
